@@ -1,0 +1,27 @@
+# Core
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# Database
+sqlalchemy[asyncio]==2.0.25
+asyncpg==0.29.0          # Async PostgreSQL driver
+psycopg2-binary==2.9.9   # Sync driver for Alembic
+alembic==1.13.1
+
+# Redis
+redis==5.0.1
+hiredis==2.3.2           # C parser for Redis
+
+# RabbitMQ
+aio-pika==9.3.1
+
+# Utilities
+python-dotenv==1.0.0
+httpx==0.26.0            # For testing
+
+# Development
+pytest==7.4.4
+pytest-asyncio==0.23.3
+pytest-cov==4.1.0
