@@ -1,4 +1,3 @@
-from decimal import Decimal
 from typing import TYPE_CHECKING, List
 
 from sqlalchemy import (
@@ -45,7 +44,7 @@ class ProductModel(BaseModel):
         index=True,
     )
 
-    price: Mapped[Decimal] = mapped_column(
+    price: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
         doc="Product price"

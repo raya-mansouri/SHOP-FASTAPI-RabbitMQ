@@ -12,7 +12,6 @@ PATTERN: Each repository handles one aggregate root
 """
 
 from datetime import datetime, timezone, timedelta
-from decimal import Decimal
 from typing import List, Optional
 from uuid import UUID
 
@@ -458,7 +457,7 @@ class OrderRepository:
     async def update_total_price(
         self,
         order_id: UUID,
-        total_price: Decimal
+        total_price: int
     ) -> bool:
         """Update order total price."""
         query = (

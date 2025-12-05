@@ -13,7 +13,6 @@ ALTERNATIVE: Use SQLAlchemy models directly
 """
 
 from datetime import datetime
-from decimal import Decimal
 from typing import List, Optional
 from uuid import UUID
 
@@ -27,7 +26,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 class ProductBase(BaseModel):
     """Base product fields."""
     name: str = Field(..., min_length=1, max_length=255)
-    price: Decimal = Field(..., gt=0, decimal_places=2)
+    price: int = Field(..., gt=0)
     stock: int = Field(..., ge=0)
 
 
@@ -77,8 +76,8 @@ class OrderItemResponse(BaseModel):
     product_id: int
     product_name: Optional[str] = None  # Denormalized for convenience
     quantity: int
-    unit_price: Decimal
-    subtotal: Decimal
+    unit_price: int
+    subtotal: int
     
     class Config:
         from_attributes = True
@@ -114,7 +113,7 @@ class OrderResponse(BaseModel):
     id: UUID
     user_id: int
     status: str
-    total_price: Decimal
+    total_price: int
     items: List[OrderItemResponse]
     created_at: datetime
     updated_at: Optional[datetime] = None
