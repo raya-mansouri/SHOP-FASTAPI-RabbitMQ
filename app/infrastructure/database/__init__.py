@@ -21,6 +21,12 @@ from app.infrastructure.database.session import (
     get_db_session_context,
     init_db,
 )
+from app.infrastructure.database.repositories import (
+    ProductRepository,
+    OrderRepository,
+    RepositoryFactory,
+    get_repositories,
+)
 
 __all__ = [
     # Base
@@ -39,4 +45,9 @@ __all__ = [
     "get_db_session_context",
     "init_db",
     "close_db",
+    # Repositories
+    "ProductRepository",
+    "OrderRepository",
+    "RepositoryFactory",
+    "get_repositories",
 ]
