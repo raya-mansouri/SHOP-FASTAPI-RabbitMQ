@@ -170,15 +170,29 @@ class OrderProcessor:
                 user_id = body.get("user_id")
                 idempotency_key = body.get("idempotency_key")
                 
+                # Check redelivery count to prevent infinite loops
+                redelivery_count = message.headers.get("x-delivery-count", 0) if message.headers else 0
+                max_redeliveries = 10  # Prevent infinite requeue loops
+                
                 logger.info(
                     "Processing order payment",
                     extra={
                         "order_id": order_id,
                         "user_id": user_id,
                         "delivery_tag": message.delivery_tag,
-                        "redelivered": message.redelivered
+                        "redelivered": message.redelivered,
+                        "redelivery_count": redelivery_count
                     }
                 )
+                
+                # If redelivered too many times, reject without requeue
+                if redelivery_count >= max_redeliveries:
+                    logger.error(
+                        f"Order {order_id} exceeded max redeliveries ({max_redeliveries}), rejecting",
+                        extra={"order_id": order_id, "redelivery_count": redelivery_count}
+                    )
+                    await message.reject(requeue=False)
+                    return
                 
                 # Process with retries
                 success = await self._process_order_payment(
@@ -198,7 +212,7 @@ class OrderProcessor:
                     await message.reject(requeue=True)
                     logger.warning(
                         "Order payment processing failed, requeuing",
-                        extra={"order_id": order_id}
+                        extra={"order_id": order_id, "redelivery_count": redelivery_count}
                     )
             
             except json.JSONDecodeError as e:
@@ -260,7 +274,7 @@ class OrderProcessor:
                         return True
                     
                     # Edge Case: Order in wrong state
-                    if order.status not in [OrderStatus.PENDING, OrderStatus.FAILED]:
+                    if order.status not in [OrderStatus.PENDING, OrderStatus.PROCESSING, OrderStatus.FAILED]:
                         logger.error(
                             f"Order {order_id} in invalid state: {order.status}"
                         )

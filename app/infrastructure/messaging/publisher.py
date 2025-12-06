@@ -31,14 +31,15 @@ class RabbitMQPublisher:
     - JSON message serialization
     """
     
-    EXCHANGE_NAME = "orders"
-    QUEUE_NAME = "order_processing"
-    ROUTING_KEY = "order.payment"
-    
     def __init__(self):
         self._connection: Optional[AbstractRobustConnection] = None
         self._channel: Optional[AbstractChannel] = None
         self._exchange: Optional[AbstractExchange] = None
+        
+        # Use settings from config for consistency
+        self.EXCHANGE_NAME = settings.rabbitmq_exchange_name
+        self.QUEUE_NAME = settings.rabbitmq_queue_name
+        self.ROUTING_KEY = settings.rabbitmq_routing_key
     
     async def connect(self) -> None:
         """Initialize RabbitMQ connection."""
@@ -83,6 +84,7 @@ class RabbitMQPublisher:
     async def publish_payment(
         self,
         order_id: UUID,
+        user_id: Optional[int] = None,
         idempotency_key: Optional[str] = None
     ) -> bool:
         """
@@ -90,6 +92,7 @@ class RabbitMQPublisher:
         
         ARGS:
             order_id: Order to process
+            user_id: Optional user ID for logging
             idempotency_key: Optional key for idempotent processing
         
         RETURNS:
@@ -102,6 +105,7 @@ class RabbitMQPublisher:
         try:
             message_body = {
                 "order_id": str(order_id),
+                "user_id": user_id,
                 "idempotency_key": idempotency_key,
             }
             

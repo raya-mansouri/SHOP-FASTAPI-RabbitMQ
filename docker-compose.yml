@@ -148,6 +148,7 @@ services:
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       RABBITMQ_QUEUE_NAME: order_processing
       RABBITMQ_EXCHANGE_NAME: orders
+      RABBITMQ_ROUTING_KEY: order.payment
       RABBITMQ_PREFETCH_COUNT: 5
       RABBITMQ_MAX_RETRIES: 3
       
