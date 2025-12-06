@@ -8,7 +8,7 @@ ALTERNATIVE: dynaconf - more features but heavier dependency
 """
 
 from functools import lru_cache
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -29,8 +29,12 @@ class Settings(BaseSettings):
     app_version: str = "1.0.0"
     debug: bool = False
     environment: str = Field(default="development", pattern="^(development|staging|production)$")
-    
+    api_v1_prefix: str = "/api/v1"
+    cors_origins: List[str] = Field(default_factory=lambda: ["*"])
+    log_level: str = "INFO"
+
     # Database
+    database_url: Optional[str] = None  # Full URL (Docker)
     postgres_host: str = "localhost"
     postgres_port: int = 5432
     postgres_user: str = "postgres"
@@ -47,27 +51,40 @@ class Settings(BaseSettings):
     db_echo: bool = False          # SQL logging (enable in dev)
     
     # Redis
+    redis_url: Optional[str] = None  # Full URL (Docker)
     redis_host: str = "localhost"
     redis_port: int = 6379
     redis_db: int = 0
     redis_password: Optional[str] = None
+    cache_ttl_idempotency: int = 86400  # 24 hours
     
     # RabbitMQ
+    rabbitmq_url: Optional[str] = None  # Full URL (Docker)
     rabbitmq_host: str = "localhost"
     rabbitmq_port: int = 5672
     rabbitmq_user: str = "guest"
     rabbitmq_password: str = "guest"
     rabbitmq_vhost: str = "/"
+    rabbitmq_queue_name: str = "order_processing"
+    rabbitmq_exchange_name: str = "orders"
+    rabbitmq_routing_key: str = "order.payment"
+    rabbitmq_prefetch_count: int = 5
+    rabbitmq_max_retries: int = 5
     
-    @property
-    def database_url(self) -> str:
+    def get_database_url(self) -> str:
         """
-        Construct async database URL.
+        Get async database URL.
+        
+        Supports both:
+        1. Full URL from DATABASE_URL env var (Docker)
+        2. Constructed from individual components (local dev)
         
         DECISION: Using asyncpg driver
         WHY: Best performance for async PostgreSQL
         ALTERNATIVE: psycopg3 (async) - newer but less mature async support
         """
+        if self.database_url:
+            return self.database_url
         return (
             f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
@@ -86,15 +103,29 @@ class Settings(BaseSettings):
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
     
-    @property
-    def redis_url(self) -> str:
-        """Construct Redis URL."""
+    def get_redis_url(self) -> str:
+        """
+        Get Redis URL.
+        
+        Supports both:
+        1. Full URL from REDIS_URL env var (Docker)
+        2. Constructed from individual components (local dev)
+        """
+        if self.redis_url:
+            return self.redis_url
         password_part = f":{self.redis_password}@" if self.redis_password else ""
         return f"redis://{password_part}{self.redis_host}:{self.redis_port}/{self.redis_db}"
     
-    @property
-    def rabbitmq_url(self) -> str:
-        """Construct RabbitMQ URL."""
+    def get_rabbitmq_url(self) -> str:
+        """
+        Get RabbitMQ URL.
+        
+        Supports both:
+        1. Full URL from RABBITMQ_URL env var (Docker)
+        2. Constructed from individual components (local dev)
+        """
+        if self.rabbitmq_url:
+            return self.rabbitmq_url
         return (
             f"amqp://{self.rabbitmq_user}:{self.rabbitmq_password}"
             f"@{self.rabbitmq_host}:{self.rabbitmq_port}/{self.rabbitmq_vhost}"

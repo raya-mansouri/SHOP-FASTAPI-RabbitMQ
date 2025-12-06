@@ -1,0 +1,184 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: order_postgres
+    environment:
+      POSTGRES_USER: orderuser
+      POSTGRES_PASSWORD: orderpass
+      POSTGRES_DB: orders_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orderuser -d orders_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - order_network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: order_redis
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - order_network
+
+  # RabbitMQ Message Broker
+  rabbitmq:
+    image: rabbitmq:4.0-management-alpine
+    container_name: order_rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"   # AMQP
+      - "15672:15672" # Management UI
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    stop_grace_period: 30s
+    networks:
+      - order_network
+
+  # FastAPI Application
+  # TODO: read environment from .env file
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: order_api
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      # Application
+      ENVIRONMENT: development
+      DEBUG: "true"
+      
+      # Database
+      DATABASE_URL: postgresql+asyncpg://orderuser:orderpass@postgres:5432/orders_db
+      DATABASE_POOL_SIZE: 20
+      DATABASE_MAX_OVERFLOW: 10
+      
+      # Redis
+      REDIS_URL: redis://redis:6379/0
+      REDIS_MAX_CONNECTIONS: 50
+      
+      # RabbitMQ
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      RABBITMQ_QUEUE_NAME: order_processing
+      RABBITMQ_EXCHANGE_NAME: orders
+      RABBITMQ_ROUTING_KEY: order.payment
+      
+      # Cache TTL
+      CACHE_TTL_PRODUCTS: 300
+      CACHE_TTL_ORDERS: 60
+      CACHE_TTL_IDEMPOTENCY: 86400
+      
+      # Features
+      ENABLE_IDEMPOTENCY: "true"
+      ENABLE_DISTRIBUTED_LOCKS: "true"
+      ENABLE_CACHE: "true"
+      
+      # Logging
+      LOG_LEVEL: INFO
+      LOG_FORMAT: json
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/app/app
+      - ./tests:/app/tests
+      - ./scripts:/app/scripts
+      - ./alembic:/app/alembic
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - order_network
+
+  # Background Worker
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: order_worker
+    command: python -m app.workers.order_processor
+    environment:
+      # Application
+      ENVIRONMENT: development
+      DEBUG: "true"
+      
+      # Database
+      DATABASE_URL: postgresql+asyncpg://orderuser:orderpass@postgres:5432/orders_db
+      DATABASE_POOL_SIZE: 10
+      
+      # Redis
+      REDIS_URL: redis://redis:6379/0
+      
+      # RabbitMQ
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      RABBITMQ_QUEUE_NAME: order_processing
+      RABBITMQ_EXCHANGE_NAME: orders
+      RABBITMQ_PREFETCH_COUNT: 5
+      RABBITMQ_MAX_RETRIES: 3
+      
+      # Worker config
+      WORKER_CONCURRENCY: 4
+      WORKER_GRACEFUL_SHUTDOWN_TIMEOUT: 30
+      
+      # Logging
+      LOG_LEVEL: INFO
+      LOG_FORMAT: json
+    volumes:
+      - ./app:/app/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - order_network
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+
+networks:
+  order_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  rabbitmq_data:
+    driver: local

@@ -41,8 +41,7 @@ class ProductResponse(ProductBase):
     created_at: datetime
     updated_at: Optional[datetime] = None
     
-    class Config:
-        from_attributes = True  # Allow from ORM model
+    model_config = {"from_attributes": True}  # Allow from ORM model
 
 
 class ProductListResponse(BaseModel):
@@ -79,8 +78,7 @@ class OrderItemResponse(BaseModel):
     unit_price: int
     subtotal: int
     
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 # ============================================================================
@@ -120,8 +118,7 @@ class OrderResponse(BaseModel):
     paid_at: Optional[datetime] = None
     failure_reason: Optional[str] = None
     
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 class OrderCreateResponse(BaseModel):
