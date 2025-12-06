@@ -27,7 +27,7 @@ from app.infrastructure.database.repositories import (
 TEST_DATABASE_URL = "postgresql+asyncpg://orderuser:orderpass@localhost:5432/orders_db"
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
 async def engine():
     """Create test database engine."""
     engine = create_async_engine(
@@ -42,32 +42,25 @@ async def engine():
     
     yield engine
     
-    # # Drop all tables after tests
-    # async with engine.begin() as conn:
-    #     await conn.run_sync(Base.metadata.drop_all)
-    
+    # Clean up
     await engine.dispose()
 
 
 @pytest.fixture
 async def session(engine):
     """Create test session with transaction rollback."""
-    connection = await engine.connect()
-    transaction = await connection.begin()
-    
-    async_session = async_sessionmaker(
-        bind=connection,
-        class_=AsyncSession,
-        expire_on_commit=False,
-    )
-    
-    session = async_session()
-    
-    yield session
-    
-    await session.close()
-    await transaction.rollback()
-    await connection.close()
+    async with engine.connect() as connection:
+        async with connection.begin() as transaction:
+            async_session = async_sessionmaker(
+                bind=connection,
+                class_=AsyncSession,
+                expire_on_commit=False,
+            )
+            
+            async with async_session() as session:
+                yield session
+                
+                # Rollback happens automatically when exiting the context
 
 
 @pytest.fixture

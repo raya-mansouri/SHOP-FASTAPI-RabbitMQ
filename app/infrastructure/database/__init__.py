@@ -14,12 +14,12 @@ from app.infrastructure.database.models import (
     BaseModel
 )
 from app.infrastructure.database.session import (
-    AsyncSessionLocal,
-    close_db,
     engine,
+    AsyncSessionLocal,
     get_db_session,
-    get_db_session_context,
-    init_db,
+    get_db_context,
+    sessionmanager,
+    DatabaseSessionManager,
 )
 from app.infrastructure.database.repositories import (
     ProductRepository,
@@ -42,9 +42,9 @@ __all__ = [
     "engine",
     "AsyncSessionLocal",
     "get_db_session",
-    "get_db_session_context",
-    "init_db",
-    "close_db",
+    "get_db_context",
+    "sessionmanager",
+    "DatabaseSessionManager",
     # Repositories
     "ProductRepository",
     "OrderRepository",

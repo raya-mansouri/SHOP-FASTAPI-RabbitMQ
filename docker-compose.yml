@@ -47,12 +47,17 @@ services:
       - "15672:15672" # Management UI
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+      - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 30s
       timeout: 10s
       retries: 5
     stop_grace_period: 30s
+    ulimits:
+      nofile:
+        soft: 10000
+        hard: 10000
     networks:
       - order_network
 

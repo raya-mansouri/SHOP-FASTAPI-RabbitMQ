@@ -25,6 +25,7 @@ from app.infrastructure.database.models import (
     OrderStatus,
     ProductModel,
 )
+from app.domain.exceptions import EntityNotFoundError
 
 
 class ProductRepository:
@@ -203,6 +204,56 @@ class ProductRepository:
         # rowcount tells us if the update matched any rows
         return result.rowcount > 0
     
+    async def deduct_stock(
+        self,
+        product_id: int,
+        quantity: int
+    ) -> ProductModel:
+        """
+        Deduct stock with pessimistic locking.
+
+        CRITICAL: This is the key method for preventing race conditions!
+
+        Steps:
+        1. SELECT FOR UPDATE (locks the row)
+        2. Check if sufficient stock
+        3. Deduct stock atomically
+        4. Return updated product
+
+        DECISION: Pessimistic locking (SELECT FOR UPDATE)
+        WHY:
+          - Prevents race conditions completely
+          - Simple and reliable
+          - Works under high contention
+
+        RAISES: InsufficientStockError if not enough stock
+        """
+        from app.domain.exceptions import InsufficientStockError
+
+        # Step 1: Lock the row
+        product = await self.get_by_id_for_update(product_id)
+        if not product:
+            raise EntityNotFoundError(f"Product {product_id} not found")
+
+        # Step 2: Check stock
+        if product.stock < quantity:
+            raise InsufficientStockError(
+                product_id=product.id,
+                product_name=product.name,
+                requested=quantity,
+                available=product.stock
+            )
+
+        # Step 3: Deduct stock
+        product.stock -= quantity
+        product.version += 1
+        product.updated_at = datetime.now(timezone.utc)
+
+        # Flush to ensure constraints are checked
+        await self.session.flush()
+
+        return product
+
     async def deduct_stock_atomic(
         self,
         product_id: int,

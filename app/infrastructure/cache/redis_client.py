@@ -1,76 +1,80 @@
+# app/infrastructure/cache/redis_client.py
 """
-Redis Client Configuration.
+Redis Client Management.
 
-DECISION: Using redis-py async client
+PATTERN: Singleton connection with dependency injection
 WHY:
-  - Native async support
-  - Connection pooling built-in
-  - Widely used, well documented
-
-ALTERNATIVE: aioredis (deprecated, merged into redis-py)
+- Single connection pool for efficiency
+- Proper lifecycle management
+- Easy dependency injection in FastAPI
 """
+import logging
+from typing import AsyncGenerator, Optional
 
-from typing import Optional
-from redis.asyncio import ConnectionPool, Redis
+from redis.asyncio import Redis, ConnectionPool
 
 from app.config import settings
- 
+from app.infrastructure.cache.cache_service import CacheService
 
-class RedisClient:
-    """
-    Redis client manager.
+logger = logging.getLogger(__name__)
+
+
+class RedisManager:
+    """Manager for Redis connections."""
     
-    PATTERN: Singleton-like with connection pooling
-    WHY: Reuse connections across requests
-    """
+    def __init__(self):
+        self._pool: Optional[ConnectionPool] = None
+        self._redis: Optional[Redis] = None
     
-    _pool: Optional[ConnectionPool] = None
-    _client: Optional[Redis] = None
-    
-    @classmethod
-    async def get_pool(cls) -> ConnectionPool:
-        """Get or create connection pool."""
-        if cls._pool is None:
-            cls._pool = ConnectionPool.from_url(
-                settings.redis_url,
+    async def connect(self) -> None:
+        """Initialize Redis connection pool."""
+        if self._pool is None:
+            self._pool = ConnectionPool.from_url(
+                settings.get_redis_url(),
                 max_connections=20,
-                decode_responses=True,  # Return strings, not bytes
+                decode_responses=True,
             )
-        return cls._pool
+            self._redis = Redis(connection_pool=self._pool)
+            logger.info("Redis connection pool initialized")
     
-    @classmethod
-    async def get_client(cls) -> Redis:
-        """Get Redis client instance."""
-        if cls._client is None:
-            pool = await cls.get_pool()
-            cls._client = Redis(connection_pool=pool)
-        return cls._client
-    
-    @classmethod
-    async def close(cls) -> None:
+    async def disconnect(self) -> None:
         """Close Redis connections."""
-        if cls._client:
-            await cls._client.close()
-            cls._client = None
-        if cls._pool:
-            await cls._pool.disconnect()
-            cls._pool = None
+        if self._redis:
+            await self._redis.aclose()
+            self._redis = None
+        if self._pool:
+            await self._pool.aclose()
+            self._pool = None
+        logger.info("Redis connection pool closed")
     
-    @classmethod
-    async def health_check(cls) -> bool:
+    def get_client(self) -> Redis:
+        """Get Redis client."""
+        if self._redis is None:
+            raise RuntimeError("Redis not initialized. Call connect() first.")
+        return self._redis
+    
+    async def health_check(self) -> bool:
         """Check Redis connection health."""
         try:
-            client = await cls.get_client()
-            await client.ping()
-            return True
-        except Exception:
+            if self._redis:
+                await self._redis.ping()
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"Redis health check failed: {e}")
             return False
 
 
-# ============================================================================
-# DEPENDENCY FOR FASTAPI
-# ============================================================================
+# Global Redis manager instance
+redis_manager = RedisManager()
 
-async def get_redis() -> Redis:
+
+async def get_redis() -> AsyncGenerator[Redis, None]:
     """FastAPI dependency for Redis client."""
-    return await RedisClient.get_client()
+    yield redis_manager.get_client()
+
+
+async def get_cache_service() -> AsyncGenerator[CacheService, None]:
+    """FastAPI dependency for CacheService."""
+    redis = redis_manager.get_client()
+    yield CacheService(redis)
